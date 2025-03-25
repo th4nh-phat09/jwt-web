@@ -17,6 +17,11 @@ function Login() {
   const navigate = useNavigate()
   const submitLogIn = async (data) => {
     const res = await authorizedAxiosInstance.post(`${API_ROOT}/v1/users/login`, data)
+    const userInfo = {
+      id: res.data?.id,
+      email: res.data?.email
+    }
+    localStorage.setItem('userinfo', JSON.stringify(userInfo))
     localStorage.setItem('accessToken', res.data?.accessToken)
     localStorage.setItem('refreshToken', res.data?.refreshToken)
     navigate('/dashboard')
