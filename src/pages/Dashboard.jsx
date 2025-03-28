@@ -8,6 +8,7 @@ import authorizedAxiosInstance from '~/utils/authorizedAxios'
 import { API_ROOT } from '~/utils/constants'
 import Button from '@mui/material/Button'
 import { useNavigate } from 'react-router-dom'
+import { logOutAPI } from '~/apis'
 
 
 function Dashboard() {
@@ -21,13 +22,7 @@ function Dashboard() {
     fetchData()
   }, [])
   const handleLogout = async () => {
-    // Cách 1 xóa token ở LocalStorage nếu lưu token ở localStorage
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    localStorage.removeItem('userInfo')
-
-    //cách 2 thì gọi tới api xóa token ở server khi lưu ở HttpOnly Cookie
-    await authorizedAxiosInstance.delete(`${API_ROOT}/v1/users/logout`)
+    await logOutAPI()
     navigate('/login')
   }
 
