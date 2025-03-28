@@ -26,77 +26,66 @@ authorizedAxiosInstance.interceptors.request.use((config) => {
   return Promise.reject(error)
 })
 
-// Add a response interceptor
-authorizedAxiosInstance.interceptors.response.use((response) => {
-  return response
-}, async (error) => {
-  //Khu vực xử lý tự động gửi lại refresh tự động cho để tạo lại accessToken
-  //Đối với BE nếu tar về mã lỗi 401 thì đá nó ra login
-  if (error.response?.status === 401 ) {
-    await logOutAPI()
-    location.href = '/login'
-  }
-  //đầu tiên phải lấy được các request API bị lỗi lên server
-  const originalRequest = error.config
-  //console.log('🚀 ~ authorizedAxiosInstance.interceptors.response.use ~ originalRequest:', originalRequest)
-  // originalRequest._retry là để không gọi đồng thời nhiều API refreshToken một lúc
-  //ví dụ như chỗ gọi api refresh token trong dashboard gọi 2 APi đó 2 lần trong cùng một useEffect
-  if (error.response?.status === 410 && !originalRequest._retry) {
-    originalRequest._retry = true
-    // đối vơi trường hợp cookie thì chỉ cần gọi lại API refreshToken thì BE tự động set accessToken vào cookie lại cho ta rồi
+// Biến để lưu trữ promise của API refresh token, giúp ngăn gọi nhiều lần
+let refreshTokenPromise = null
 
-    //lấy refresh token lại để làm tham số gọi API refreshToken
-    //Với trường hợp cookie thì ko cần lấy ra vì nó tự gửi kèm theo cookie
-    //với trường hợp localStorage thì lấy ra
-    const refreshToken = localStorage.getItem('refreshToken')
+// Thêm interceptor xử lý response
+authorizedAxiosInstance.interceptors.response.use(
+  (response) => response, // Nếu response thành công thì trả về luôn
+  async (error) => {
 
-    try {
-      //Gọi API refresh để tạo lại accessToken
-      const res = await refreshTokenAPI(refreshToken)
-
-      //lấy ra accessToken mới được gửi lại và gán nó vào localStorage,còn cookie thì nó tự set
-      const { accessToken } = res.data
-      localStorage.setItem('accessToken', accessToken)
-
-      // gắn lại vào header để gửi lại lên server
-      authorizedAxiosInstance.defaults.headers.Authorization = `Bearer ${accessToken}`
-
-      //gọi lại các API accessToken lỗi để đăng nhâp lại
-      return authorizedAxiosInstance(originalRequest)
-    } catch (_error) {
-      await logOutAPI()
-      location.href = '/login'
-      return Promise.reject(_error)
+    //Nếu bị lỗi 401 (Unauthorized) → Đăng xuất và chuyển hướng đến trang login
+    if (error.response?.status === 401) {
+      await logOutAPI() // Gọi API logout
+      location.href = '/login' // Chuyển về trang đăng nhập
+      return Promise.reject(error)// Trả về lỗi
     }
-    //   return refreshTokenAPI(refreshToken)
-    //     .then( (res) => {
-    //       //lấy ra accessToken mới được gửi lại và gán nó vào localStorage,còn cookie thì nó tự set
-    //       const { accessToken } = res.data
-    //       localStorage.setItem('accessToken', accessToken)
 
-    //       // gắn lại vào header để gửi lại lên server
-    //       authorizedAxiosInstance.defaults.headers.Authorization = `Bearer ${accessToken}`
+    //Lấy request gốc bị lỗi để retry sau khi có token mới
+    const originalRequest = error.config
 
-    //       //gọi lại các API accessToken lỗi để đăng nhâp lại
-    //       return authorizedAxiosInstance(originalRequest)
-    //     })
-    //     .catch(_error => {
-    //       logOutAPI()
-    //       //location.href = '/login'
-    //       return Promise.reject(_error)
-    //     })
+    //Nếu lỗi là 410 (Token hết hạn) thì xử lý refresh token
+    if (error.response?.status === 410 && originalRequest) {
+      // Lấy refreshToken từ localStorage
+      const refreshToken = localStorage.getItem('refreshToken')
 
+      //Nếu chưa có refreshTokenPromise thì gọi API refresh
+      if (!refreshTokenPromise) {
+        refreshTokenPromise = refreshTokenAPI(refreshToken)
+          .then((res) => {
+
+            // Lấy accessToken mới từ response
+            const { accessToken } = res.data
+
+            // Lưu vào localStorage
+            localStorage.setItem('accessToken', accessToken)
+
+            // Cập nhật vào header mặc định
+            authorizedAxiosInstance.defaults.headers.Authorization = `Bearer ${accessToken}`
+          })
+          .catch(async (_error) => {
+            // Nếu refresh thất bại → Đăng xuất
+            await logOutAPI()
+            location.href = '/login'
+            // Trả lỗi để request biết refresh thất bại
+            return Promise.reject(_error)
+          })
+          .finally(() => {
+            // ✅ Sau khi refresh xong, reset lại để lần sau gọi
+            refreshTokenPromise = null
+          })
+      }
+      //goi lai cac api loi
+      return refreshTokenPromise.then(() => {
+        return authorizedAxiosInstance(originalRequest)
+      })
+    }
+    let errorMessage = error?.message
+    if (error.response?.data?.message) errorMessage = error.response?.data?.message
+
+    if (error.status === 410) toast.error(errorMessage) // Hiển thị lỗi nếu là 410
+    return Promise.reject(error) // Trả lỗi về để xử lý ở chỗ gọi API
   }
-
-
-  let errorMessage = error?.message
-  if (error.response?.data?.message)
-    errorMessage = error.response?.data?.message
-
-  //toast error ra tru 410 vi de refresh token
-  if (error.status === 410 )
-    toast.error(errorMessage)
-  return Promise.reject(error)
-})
+)
 
 export default authorizedAxiosInstance
