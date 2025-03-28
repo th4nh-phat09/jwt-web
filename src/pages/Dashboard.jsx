@@ -17,10 +17,12 @@ function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       const res = await authorizedAxiosInstance.get(`${API_ROOT}/v1/dashboards/access`)
+      await authorizedAxiosInstance.get(`${API_ROOT}/v1/dashboards/access`)
       setUser(res.data)
     }
     fetchData()
   }, [])
+
   const handleLogout = async () => {
     await logOutAPI()
     navigate('/login')
